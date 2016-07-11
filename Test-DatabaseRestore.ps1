@@ -8,66 +8,42 @@ function Test-DatabaseRestore {
 .SYNOPSIS
 For the database input, restores the most recent FULL backup, all DIFF backup since the most recent FULL, and all LOG backups
 since the most recent DIFF 
-
 .DESCRIPTION
 This function identifies the most recent FULL backup file for a database, any DIFF backup files that have been generated since the 
 last FULL backup for that database, and any LOG backup files since the most recent DIFF
 It then runs the Restore-SQLDatabase cmdlet for each file, setting the -norecovery flag for each file except the last one which runs
 WITH RECOVERY
-
 .EXAMPLE
-
 Test-DatabaseRestore -databasename YourDatabase -backupinstance YourBackupInstance -restoreinstance YourRestoreInstance -noexec 0
-
 Description
 -----------
-
 This example will identify the valid backup files for YourDatabase on YourBackupInstance and restore those files to YourRestoreInstance
-
 .EXAMPLE
-
 Test-DatabaseRestore -databasename YourDatabase -backupinstance YourBackupInstance -restoreinstance YourRestoreInstance -restorepath C:\YourRestorePath -noexec 0
-
 Description
 -----------
-
 This example will identify the valid backup files for YourDatabase on YourBackupInstance and restore those files to YourRestoreInstance
 If -backupinstance and -restoreinstance are not equal, all backup files will be copied to C:\YourRestorePath on YourRestoreInstance
-
 .EXAMPLE
-
 Test-DatabaseRestore -databasename YourDatabase -backupinstance YourBackupInstance -restoreinstance YourRestoreInstance -restorepath C:\YourRestorePath -stopatdate "2016-06-05 12:59:31" -noexec 0
-
 Description
 -----------
-
 This example will identify the valid backup files for YourDatabase on YourBackupInstance before "2016-06-05 12:59:31" and copy those files to C:\YourRestorePath on YourRestoreInstance
 The -stopatdate value will be used in the last log restore
-
 .EXAMPLE
-
 Test-DatabaseRestore -databasename YourDatabase -backupinstance YourBackupInstance -restoreinstance YourRestoreInstance -restorepath C:\YourRestorePath -stopatdate "2016-06-05 12:59:31" -noexec 0
-
 Description
 -----------
-
 This example will identify the valid backup files for YourDatabase on YourBackupInstance before "2016-06-05 12:59:31" and copy those files to C:\YourRestorePath on YourRestoreInstance
 The -stopatdate value will be used in the last log restore
-
 .EXAMPLE
-
 Test-DatabaseRestore -databasename YourDatabase -backupinstance YourBackupInstance -restoreinstance YourRestoreInstance -restorepath C:\YourRestorePath -noexec 1
-
 Description
 -----------
-
 This example will identify the valid backup files for YourDatabase on YourBackupInstance and copy those files to C:\YourRestorePath on YourRestoreInstance
 The Restore-SqlDatabase commands will be generated and written to file C:\YourRestorePath\restore.sql
-
-
 .PARAMETER databasename
 The database to test restores for
-
 #>
 [CmdletBinding()]
 param
@@ -141,7 +117,6 @@ process {
     }
     <#
     [string]$setsingle = "ALTER DATABASE $databasename SET SINGLE_USER WITH ROLLBACK IMMEDIATE";
-
     if($noexec -eq 1)
     {
         Write-Output "Invoke-Sqlcmd -Query '$setsingle' -Database 'master' -ServerInstance $restoreinstance;"
@@ -161,10 +136,10 @@ process {
         [string]$querystring = "EXEC master.dbo.GetRestoreFiles @db_name = '$databasename', @stopat = '$stopatdate'";
     }
 
-    $querystring;
+    #$querystring;
 
     <# Execute the stored procedure and pass the result set to variable `$filelist #>
-    $filelist = Invoke-Sqlcmd -Query $querystring -ServerInstance $backupinstance -database "master" 
+    $filelist = Invoke-Sqlcmd -Query $querystring -ServerInstance $backupinstance -database "master"
 
     $filelist;
 
@@ -175,9 +150,18 @@ process {
     }
         
     <# Initialize the loop counter and loop limit #>
-    $filecount = 0;
-    $filelimit = ($filelist.Length - 1);
-
+    if($filelist.Length)
+    {
+        $filecount = 0;
+        $filelimit = ($filelist.Length - 1)
+        $array = 1;
+    }
+    else
+    {
+        $filecount = 0;
+        $filelimit = 1;
+        $array = 0;
+    }
     if ($restoreinstance.Contains("\"))
     {
         $restoreserver = $restoreinstance.Substring(0,($restoreinstance.IndexOf("\")));
@@ -228,10 +212,18 @@ process {
     <# Loop through each backup file and build Restore-SqlDatabase commands #>
     while($filecount -le $filelimit)
     {
-
-        $file = $filelist[$filecount].physical_device_name;
-        $type = $filelist[$filecount].type;
-
+        $filelimit;
+        if($array -eq 0)
+        {
+            $file = $filelist.physical_device_name;
+            $type = $filelist[$filecount].type;
+            $filecount = 2;
+        }
+        else
+        {
+            $file = $filelist[$filecount].physical_device_name;
+            $type = $filelist[$filecount].type;
+        }
         $backupunc = "\\" + $backupserver + "\" + $file.Replace(":","$")
 
         <# If the backup instance is not the same as the restore instance, get the RelocateFile for the restore instance #>
